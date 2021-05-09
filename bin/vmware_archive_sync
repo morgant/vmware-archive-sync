@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+
+#
+# vmware_archive_sync - archive & sync VMware Fusion VMs
+#
+# CHANGE LOG:
+#
+# v0.1.0 - 2021-05-07 - Morgan Aldridge <morgant@makkintosshu.com>
+#                       Initial version.
+#
+# LICENSE:
+#
+# Copyright (c) 2021 Morgan Aldridge
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+#  in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+
+# environment variables
+VM_PATH="${VM_PATH:="${HOME}/Virtual Machines.localized"}"
+VMWARE_ARCHIVE="${VMWARE_ARCHIVE="/usr/local/sbin/vmware_archive"}"
+
+# print usage instructions (help)
+function usage() {
+  echo "Usage: $tool vm local_destination remote_destination"
+}
+
+# parse input
+if [ "$#" -ne 3 ] ; then
+  usage
+  exit
+else
+  vm="$1"
+  local_dest="$2"
+  remote_dest="$3"
+
+  # check for paths to VMs
+  if [ ! -d "${VM_PATH}" ] ; then
+    echo "ERROR! Could not find path to VMs '${VM_PATH}'! Please set VM_PATH environment variable."
+    exit
+  fi
+
+  # check for local destination
+  if [ ! -d "${local_dest}" ] ; then
+    echo "ERROR! Local destination '${local_dest}' does not exist!"
+    exit
+  fi
+
+  # archive the VM
+  if ! "${VMWARE_ARCHIVE}" -v "${VM_PATH}/${vm}" "${local_dest}/" ; then
+    echo "ERROR! Failed to archive the '${vm}' VM to local destination '${local_dest}'!"
+    exit
+  else
+    # check for remote destination
+    remote_host="${remote_dest%:*}"
+    remote_path="${remote_dest#*:}"
+    if ! ssh "${remote_host}" "test -d ${remote_path}" ; then
+      echo "ERROR! Remote destination '${remote_path}' at '${remote_host}' does not exist!"
+      exit
+    fi
+
+    # sync to the remote server
+    sync_src="${local_dest}/${vm}/"
+    sync_dest="${remote_dest}/${vm}/"
+    echo "Syncing VM archive from '${sync_src}' to '${sync_dest}'..."
+    if rsync -va -e ssh --delete-after "${sync_src}" "${sync_dest}" ; then
+      echo "Done."
+    else
+      echo "ERROR! Failed to sync VM archive from '${sync_src}' to '${sync_dest}'!"
+      exit
+    fi
+  fi
+fi
